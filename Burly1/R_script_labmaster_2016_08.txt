@@ -1,0 +1,219 @@
+####This script was drafted by Cailu Lin in 2016_08 for processing the labmaster data, 
+####before application, Dani will be prove and tweak it if needed.
+
+##creat statistical Table
+Table_For_analyses<-file("table_processed.csv", "w")
+cat("Animal.No.", "Average.RER", "Hr.H.2", "Hr.XT.YT.Z", "Dy.Feed", "Dy.Drink", "Hr.VO2.2", "Hr.VCO2.2", file=Table_For_analyses, "\n" ,sep=", " )
+
+
+id <- as.character(read.csv(file = "labmaster.id.csv", header = TRUE)[,1])
+
+for (i in 1:length(id))
+{
+  ####process labmaster data aninaml by animal
+  requested_animal_no <- id[i] #####type animal ID#####
+  
+  # Load records of animal measurements.
+  records <- read.csv(file="labmaster.records.csv", header=TRUE, sep=",", stringsAsFactors=FALSE)
+  
+  ##########################################################
+  
+  # Extract rows for the animal "requested_animal_no".
+  animal_records <- records[records$Animal.No == requested_animal_no,]
+  
+  # Sort records for the animal on the "Date" and "Time" columns.
+  sorted_animal_records <- animal_records[order(animal_records$Date, animal_records$Time),]
+  
+  # Slice to only contain the "Date" and "Time" columns.
+  sorted_animal_date_times <- sorted_animal_records[,c("Date", "Time")]
+  
+  # Print the sorted (Date, Time) pairs for the animal.
+  sorted_animal_date_times
+  
+  ##########################################################
+  # Use procedural statements to find the minimum and maximum
+  # date_time string in rows where "Animal.No." is
+  # "requested_animal_no".
+  
+  min_date_time_string <- NA
+  max_date_time_string <- NA
+  for (row in 1 : dim(animal_records)[1])
+  {
+      
+  # Skip this row if either "Animal.No" is not available (NA) or
+  # the row is not for the requested animal.
+  if (!is.na(animal_records[row, "Animal.No."]) &&
+      animal_records[row, "Animal.No."] == requested_animal_no)
+   {
+    # Extract the "Date" and "Time" value from this row and
+    # store as a single string.
+    date_time <- animal_records[row, c("Date", "Time")]
+    date_time_string <- paste(date_time[1], date_time[2])
+    
+    # Update the minimum and maximum date-time string seen so far.
+    if (is.na(min_date_time_string) || date_time_string < min_date_time_string)
+    {
+      min_date_time_string = date_time_string
+    }
+    else if (is.na(max_date_time_string) || date_time_string > max_date_time_string)
+    {
+      max_date_time_string = date_time_string
+    }
+   }
+  }
+
+# Print the minimum and maximum date time strings that were found for the
+# requested animal.
+ # print "minimum date time string:"
+  min_date_time_string
+  #print "maximum date time string:"
+   max_date_time_string
+
+#### function to extract <hour> from a string in the format of "hour:minute...".
+
+ extract_hour <- function( hour_time_string )
+ {
+   as.numeric( strsplit( hour_time_string, ":" )[[1]][[1]] )
+ }
+
+##### function to determine if a given row from records is empty.
+# The row is considered empty when the Date value is missing or is empty.
+
+ is_empty_row <- function( row_data )
+ {
+   is.na( row_data[ "Date" ] ) || row_data[ "Date" ] == ""
+ }
+
+ # Load records of measurements for a given animal.
+
+ requested_animal_no <- id[i]
+
+ all_records <- read.csv( file="labmaster.records.csv", header=TRUE, sep=",", stringsAsFactors=FALSE )
+ records <- all_records[ all_records$"Animal.No." == requested_animal_no, ]
+
+##### Update rows in "records" with statistics.
+
+ first_data_row <- 2
+ last_data_row <- dim( records )[ 1 ]
+ first_current_hour_row <- NA
+ rows_with_hourly_statistics <- NULL
+
+ for( row in first_data_row : ( last_data_row - 1 ) )
+ {
+  # Skip empty rows.
+  
+   if( is_empty_row( records[ row, ] ) )
+   {
+     next
+   }
+  
+   if( is_empty_row( records[ row + 1, ] ) )
+   {
+     next
+   }
+  
+  ##### Compute statistics over the next and the current row.
+  
+   current_drink_value <- as.numeric( records[ row, "Drink1" ] )
+   next_drink_value <- as.numeric( records[ row + 1, "Drink1" ] )
+   records[ row, "Diff.Drink" ] <- next_drink_value - current_drink_value
+  
+   current_feed_value <- as.numeric( records[ row, "Feed1" ] )
+   next_feed_value <- as.numeric( records[ row + 1, "Feed1" ] )
+   records[ row, "Diff.Feed" ] <- next_feed_value - current_feed_value
+  
+  # Compute statistics over the hour for the current row.
+  #
+  # This computation is performed over a number of rows that have the same hour.
+  # The computation is triggered when the next row has a different hour.
+  
+  if( is.na( first_current_hour_row ) )
+  {
+    first_current_hour_row = row;
+  }
+  
+  current_hour <- extract_hour( records[ row, "Time" ] )
+  next_hour <- extract_hour( records[ row + 1, "Time" ] )
+  
+  if( current_hour != next_hour )
+  {
+    last_current_hour_row = row;
+    
+    # Compute statistics over the first_current_hour_row : last_current_hour_row rows
+    # (the rows for the current hour) and record with the first_current_hour_row row.
+    
+    records[ first_current_hour_row, "Average.RER" ] <-
+      mean( as.numeric( records[ first_current_hour_row : last_current_hour_row, "RER" ] ) )
+    records[ first_current_hour_row, "Hr.H.2." ] <-
+      mean( as.numeric( records[ first_current_hour_row : last_current_hour_row, "H.2." ] ) )
+    records[ first_current_hour_row, "Hr.XT.YT.Z" ] <-
+      2*(mean( as.numeric( records[ first_current_hour_row : last_current_hour_row, "XT.YT.Z" ] ) ))
+    records[ first_current_hour_row, "Hr.Drink" ] <-
+      2*(mean( as.numeric( records[ first_current_hour_row : last_current_hour_row, "Diff.Drink" ] )))
+    records[ first_current_hour_row, "Hr.Feed" ] <- 
+      2*(mean( as.numeric( records[ first_current_hour_row : last_current_hour_row, "Diff.Feed" ] )))
+    records[ first_current_hour_row, "Hr.VO2.2" ] <-
+      mean( as.numeric( records[ first_current_hour_row : last_current_hour_row, "VO2.2." ] ) )
+    records[ first_current_hour_row, "Hr.VCO2.2" ] <-
+      mean( as.numeric( records[ first_current_hour_row : last_current_hour_row, "VCO2.2." ] ) )
+    records[ first_current_hour_row, "Hour" ] <- current_hour
+    
+    rows_with_hourly_statistics <- c( rows_with_hourly_statistics, first_current_hour_row )
+    
+    # Start new hour block.
+    
+    first_current_hour_row = row + 1;
+    }
+  }
+
+# Plot hourly statistics.
+
+ plot( records[ rows_with_hourly_statistics, "Hour" ], records[ rows_with_hourly_statistics, "Average.RER" ] )
+ plot( records[ rows_with_hourly_statistics, "Hour" ], records[ rows_with_hourly_statistics, "Hr.H.2." ] )
+ plot( records[ rows_with_hourly_statistics, "Hour" ], records[ rows_with_hourly_statistics, "Hr.XT.YT.Z" ] )
+ plot( records[ rows_with_hourly_statistics, "Hour" ], records[ rows_with_hourly_statistics, "Hr.Feed" ] )
+ plot( records[ rows_with_hourly_statistics, "Hour" ], records[ rows_with_hourly_statistics, "Hr.Drink" ] )
+ plot( records[ rows_with_hourly_statistics, "Hour" ], records[ rows_with_hourly_statistics, "Hr.VO2.2" ] )
+ plot( records[ rows_with_hourly_statistics, "Hour" ], records[ rows_with_hourly_statistics, "Hr.VCO2.2" ] )
+
+ a = mean(records[ rows_with_hourly_statistics, "Average.RER" ])
+ b = mean(records[ rows_with_hourly_statistics, "Hr.H.2." ])
+ c = mean(records[ rows_with_hourly_statistics, "Hr.XT.YT.Z" ] )
+ d = 24*(mean(records[ rows_with_hourly_statistics, "Hr.Feed" ]))
+ e = 24*(mean(records[ rows_with_hourly_statistics, "Hr.Drink"]))
+ f = mean(records[ rows_with_hourly_statistics, "Hr.VO2.2" ]) 
+ g = mean(records[ rows_with_hourly_statistics, "Hr.VCO2.2" ])
+
+ cat(requested_animal_no, a, b, c, d, e, f, g, file=Table_For_analyses, "\n" ,sep=", " )
+}
+
+
+####next step, t-tests analyses the processed data####
+
+geno <- read.csv("id.csv", header = TRUE)
+metab <- read.csv ("table_processed.csv", header = TRUE)
+table <- merge(geno, metab, by="Animal.No.")
+
+##t.test for Average.RER
+t.test(table$Average.RER ~table$geno)
+
+##t.test for Hr.XT.YT.Z
+t.test(table$Hr.XT.YT.Z ~table$geno)
+
+##t.test for Hr.VO2.2
+t.test(table$Hr.VO2.2 ~table$geno)
+
+##t.test for Hr.VCO2.2
+t.test(table$Hr.VCO2.2 ~table$geno)
+
+
+##t.test for Hr.H.2
+t.test(table$Hr.H.2 ~table$geno)
+
+
+##t.test for Dy.Feed
+t.test(((table$Dy.Feed*1000)/table$lean) ~table$geno)
+
+##t.test for Dy.Drink
+t.test(((table$Dy.Drink*1000)/table$lean) ~table$geno)
+
