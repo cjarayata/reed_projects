@@ -8,7 +8,7 @@
 # Use 'pacman' package to install and load packages needed
 if (!require("pacman")) install.packages("pacman", "CRAN")
 
-pacman::p_load(psych, lubridate, plyr, dplyr, broom, reshape, data.table, lsr, scatterplot3d)
+pacman::p_load(psych, lubridate, plyr, dplyr, broom, reshape, data.table, lsr, scatterplot3d, multcompView, lsmeans)
 
 # Read in data
 Data_burly1 <- read.csv("Burly1/Data/Data_burly1.csv", header=TRUE)
@@ -16,6 +16,12 @@ Data_burly1 <- read.csv("Burly1/Data/Data_burly1.csv", header=TRUE)
 # Read in SNP info
 snp <- read.csv("Burly1/Data/snp.csv", header=TRUE)
 snp$Marker <- trimws(tolower(snp$Marker))
+
+# Standard Error function
+sem <- function(x){
+  sd(x)/sqrt(length(x))
+}
+
 
 ## Prep END ##
 
@@ -100,9 +106,8 @@ names(figure3.dat)
 
 
 
-## F2 WORKS - how do i build this better?
+## F2 WORKS - how do i build this better? ####
 # bodyweight plus age covariate
-# matches saved output; once merge with new SNP list must check against graphpad
 
 aov.out <-
   tidy(aov(lm(
@@ -135,56 +140,181 @@ f2.results %<>%
   merge(., snp, by.x = "SNP", by.y = "Marker", all = T) %>% # merge with SNP info
   arrange(., Mark.Position.Mb)
 
-# calculate negative logp for graphpad
+# calculate negative logp
 f2.results$neg.logp <- (-log10(f2.results$p.value))
 
+# WRITE OUT for part one of graphpad figure 3
+# write.table(aov.out2, file="F2__association.csv", sep=",", row.names=F)
+
+# part 2: bar chart
 # which SNP is the top hit?
 as.character(f2.results[which.max(f2.results$neg.logp), ][1]) # rs3023694
 
 # figure out how to get the n, body weight, and standard deviation for top snp
-Data_burly1 %>% 
-  filter(., Table1_Mapping_population2 == "F2") %>%
+raw.table <-
+  figure3.dat %>% 
+  filter(., table1_mapping_population2 == "F2") %>%
   ddply(., ~rs3023694, summarise,
-        n = length(Mouse.ID),
-        BW.mean = mean(BodyWeight),
-        BW.sd = sd(BodyWeight),
-        Bw.max = max(BodyWeight),
-        Bw.min = min(BodyWeight))
+        n = length(mouse.id),
+        BW.mean = mean(bodyweight),
+        BW.sd = sd(bodyweight),
+        BW.se = sem(bodyweight),
+        Bw.max = max(bodyweight),
+        Bw.min = min(bodyweight))
 
 
-# write.table(aov.out2, file="F2__association.csv", sep=",", row.names=F)
+## least square means stuff!
+# we do this to obtain "corrected" (covariate-adjusted) means and standard deviations for our DV, so that we can make meaningful post-hoc comparisons
 
-# need to merge with SNP info for graphpad
+# run manually on the top hit
+manual.fit <-
+  aov(lm(
+      bodyweight ~ rs3023694 + age,
+      data = figure3.dat,
+      subset = figure3.dat$table1_mapping_population == 'F2'
+    )
+  )
 
-# obtain top hit, make sure barchart matches
-# how to obtain effect size?
+# obtain partial eta squared for the model
+etaSquared(manual.fit, type=1)
+
+# run lsmeans to generate new fit object
+leastsquare.fit <- lsmeans(manual.fit,
+                        pairwise ~ rs3023694,
+                        data = figure3.dat,
+                        subset = figure3.dat$table1_mapping_population == 'F2')
+
+# compact letter display of pairwise comparisons
+ls.table <- cld(leastsquare.fit,
+                alpha=.05, 
+                Letters=letters)
+
+# combine with raw
+full.table <- merge(raw.table, ls.table)
+
+# calculate least squares SD from SE
+full.table$ls.sd <- full.table$SE * sqrt(full.table$n)
+
+# cut down to relevant; this is graphpad part 2
+cohen <- full.table[, c(1, 2, 8, 14)]
+
+# exclude genotype B (129/129 in this case)
+cohen <- cohen[which(full.table$rs3023694 != "B"), ]
+
+# obtain effects size; this is in column D of graphpad (part 3)
+effectsize <- numeric(0)
+
+effectsize[1] <- 
+((cohen$lsmean[1] - cohen$lsmean[2])
+/sqrt(
+  (cohen$ls.sd[1]^2 + cohen$ls.sd[2]^2)
+  /2
+))
 
 
-rm(aov.out2)
 
-
-## F2_Second DOES NOT WORK
+## F2_Second WORKS ####
 # a very select set of genotypes
 # lean plus total weight as covariate
 
-aov.out2 <- tidy(aov(lm(lean ~ figure3.dat[,22]+total, data=figure3.dat, subset=table1_mapping_population=='F2_second')))
-aov.out2["SNP"] <- colnames(figure3.dat)[22]
-aov.out2["Strain"] <- "F2_HF"
+aov.out2 <- tidy(aov(lm(lean ~ figure3.dat[,23]+total, data=figure3.dat, subset=table1_mapping_population=='F2_second')))
+aov.out2["SNP"] <- colnames(figure3.dat)[23]
+aov.out2["Strain"] <- "F2_second"
 
 
-for (i in c(33:51, 71:80, 114:133)){  
+for (i in c(34:52, 72:81, 115:133)){  
   temp.f2.hf<-tidy(aov(lm(lean~figure3.dat[,i] + total, data=figure3.dat, subset=table1_mapping_population=='F2_second')))
   temp.f2.hf["SNP"] <- colnames(figure3.dat)[i]
-  temp.f2.hf["Strain"] <- "F2_HF"
-  aov.out2 <- rbind(aov.out2, temp.f2.second)
+  temp.f2.hf["Strain"] <- "F2_second"
+  aov.out2 <- rbind(aov.out2, temp.f2.hf)
 }
+
+
+# only take main effect of genotype, which is listed in output as the looped term
+f2.hf.results <- aov.out2[grep("figure3.dat", aov.out2$term), ]
+
+f2.hf.results %<>% 
+  .[, c(8, 7, 2:6)] %>% # reorder
+  merge(., snp, by.x = "SNP", by.y = "Marker", all = T) %>% # merge with SNP info
+  arrange(., Mark.Position.Mb)
+
+# calculate negative logp for graphpad
+f2.hf.results$neg.logp <- (-log10(f2.hf.results$p.value))
+
+# WRITE OUT
+# write.table(aov.out2, file="F2__association.csv", sep=",", row.names=F)
+
+# for bar chart
+
+# which SNP is the top hit?
+as.character(f2.hf.results[which.max(f2.hf.results$neg.logp), ][1]) # d2mit285
+
+# figure out how to get the n, body weight, and standard deviation for top snp
+raw.table <-
+  figure3.dat %>% 
+  filter(., table1_mapping_population == "F2_second") %>%
+  ddply(., ~d2mit285, summarise,
+        n = length(mouse.id),
+        lean.mean = mean(lean),
+        lean.sd = sd(lean),
+        lean.se = sem(lean),
+        lean.max = max(lean),
+        lean.min = min(lean))
+
+
+## least square means stuff!
+# we do this to obtain "corrected" (covariate-adjusted) means and standard deviations for our DV, so that we can make meaningful post-hoc comparisons
+
+# run manually on the top hit
+manual.fit <-
+  aov(
+    lm(
+      lean ~ d2mit285 + total,
+      data = figure3.dat,
+      subset = figure3.dat$table1_mapping_population == 'F2_second'
+    )
+  )
+
+# obtain partial eta squared for the model
+etaSquared(manual.fit, type=1)
+
+# run lsmeans to generate new fit object
+leastsquare.fit <- lsmeans(manual.fit,
+                           pairwise ~ d2mit285,
+                           # adjust=,
+                           data = figure3.dat,
+                           subset = figure3.dat$table1_mapping_population == 'F2_second')
+
+# compact letter display of pairwise comparisons
+ls.table <- cld(leastsquare.fit,
+                alpha=.05, 
+                Letters=letters)
+
+# combine with raw
+full.table <- merge(raw.table, ls.table)
+
+# calculate least squares SD from SE
+full.table$ls.sd <- full.table$SE * sqrt(full.table$n)
+
+# cut down to relevant; exclude genotype B (129/129 in this case)
+cohen <- full.table[which(full.table$d2mit285 != "B"), c(1, 2, 8, 14)]
+
+effectsize <- numeric(0)
+
+effectsize[1] <- 
+  ((cohen$lsmean[1] - cohen$lsmean[2])
+   /sqrt(
+     (cohen$ls.sd[1]^2 + cohen$ls.sd[2]^2)
+     /2
+   ))
+
+
+
 # write.table(aov.out2, file="F2_second_association.csv", sep=",", row.names=F)
 
 
-rm(aov.out2)
 
-
-## Backcross_129 WORKS as long as you take out last SNP
+## Backcross_129 WORKS as long as you take out last SNP ####
 # lean with total covariate
 
 aov.out2 <- tidy(aov(lm(lean ~ figure3.dat[,22]+total, data=figure3.dat, subset=table1_mapping_population2=='Backcross_129')))
@@ -203,7 +333,7 @@ for (i in 23:(length(names(figure3.dat)))-1){
 
 rm(aov.out2)
 
-## Backcross_B6 WORKS
+## Backcross_B6 WORKS ####
 # lean with total covariate
 
 aov.out2 <- tidy(aov(lm(lean ~ figure3.dat[,22]+total, data=figure3.dat, subset=table1_mapping_population2=='Backcross_B6')))
@@ -221,7 +351,7 @@ for (i in 23:(length(names(figure3.dat))-1)){
 rm(aov.out2)
 
 
-## For 129.B6_chr2 WORKS
+## For 129.B6_chr2 WORKS ####
 # lean with SEX and TOTAL covariates?
 
 aov.out2 <- tidy(aov(lm(lean ~ figure3.dat[,22]+sex+total, data=figure3.dat, subset=table1_mapping_population=='129.B6-Chr2')))
@@ -241,7 +371,7 @@ for (i in 23:length(names(figure3.dat))){
 rm(aov.out2)
 
 
-## Congenics WORKS
+## Congenics WORKS ####
 # log transformed, total covariate, subset of SNPs
 
 aov.out2 <- tidy(aov(lm(log(lean) ~ figure3.dat[,60]+total, data=figure3.dat, subset=table1_mapping_population2=='Congenic')))
@@ -284,6 +414,32 @@ write.table(aov.out2, file="129.B6-Chr2_association1.csv", sep=",", row.names=F)
 ## what about the inverse for B6.129-Chr2?
 
 
+## Figure 5: Lean
+aov.out2 <- tidy(aov(lm(lean ~ cj.figure2[,60]+total, data=cj.figure2, subset=table1_mapping_population2=='Congenic')))
+aov.out2["SNP"] <- colnames(cj.figure2)[60]
+aov.out2["Strain"] <- "Congenic"
+
+for (i in 61:length(names(cj.figure2))){ 
+  temp.Congenic<-tidy(aov(lm(lean ~ cj.figure2[,i] + total, data=cj.figure2, subset=table1_mapping_population2=='Congenic')))
+  temp.Congenic["SNP"] <- colnames(cj.figure2)[i]
+  temp.Congenic["Strain"] <- "Congenic"
+  aov.out2 <- rbind(aov.out2, temp.Congenic)
+}
+
+congenic.lean.results <- aov.out2[grep("cj.figure2", aov.out2$term), ]
+
+congenic.lean.results %<>% 
+  .[, c(8, 7, 2:6)] %>% # reorder
+  merge(., snp, by.x = "SNP", by.y = "Marker", all = T) %>% # merge with SNP info
+  arrange(., Mark.Position.Mb)
+
+# calculate negative logp for graphpad
+congenic.lean.results$neg.logp <- (-log10(congenic.lean.results$p.value))
+
+# write.table(aov.out2, file="F2_second_association.csv", sep=",", row.names=F)
+
+
+
 ## S4 Figure for Fat ####
 # load in data
 cj.figure2 <- Data_burly1
@@ -291,18 +447,31 @@ colnames(cj.figure2) <- tolower(names(cj.figure2))
 names(cj.figure2)
 
 
-rm(aov.out2)
-###Congenics
-aov.out2 <- tidy(aov(lm(fat ~ cj.figure2[,60]+total, data=cj.figure2, subset=table1_mapping_population2=='Congenic')))
-aov.out2["SNP"] <- colnames(cj.figure2)[60]
-aov.out2["Strain"] <- "Congenic"
-for (i in 61:length(names(cj.figure2))){ 
-  temp.Congenic<-tidy(aov(lm(fat~cj.figure2[,i] + total, data=cj.figure2, subset=table1_mapping_population2=='Congenic')))
-  temp.Congenic["SNP"] <- colnames(cj.figure2)[i]
-  temp.Congenic["Strain"] <- "Congenic"
-  aov.out2 <- rbind(aov.out2, temp.Congenic)
-}
-write.table(aov.out2, file="Congenic_fat_association1.csv", sep=",", row.names=F)
+# ###Congenics
+# aov.out2 <- tidy(aov(lm(fat ~ cj.figure2[,60]+total, data=cj.figure2, subset=table1_mapping_population2=='Congenic')))
+# aov.out2["SNP"] <- colnames(cj.figure2)[60]
+# aov.out2["Strain"] <- "Congenic"
+# 
+# for (i in 61:length(names(cj.figure2))){ 
+#   temp.Congenic<-tidy(aov(lm(fat~cj.figure2[,i] + total, data=cj.figure2, subset=table1_mapping_population2=='Congenic')))
+#   temp.Congenic["SNP"] <- colnames(cj.figure2)[i]
+#   temp.Congenic["Strain"] <- "Congenic"
+#   aov.out2 <- rbind(aov.out2, temp.Congenic)
+# }
+# # write.table(aov.out2, file="Congenic_fat_association1.csv", sep=",", row.names=F)
+# 
+# congenic.fat.results <- aov.out2[grep("cj.figure2", aov.out2$term), ]
+# 
+# congenic.fat.results %<>% 
+#   .[, c(8, 7, 2:6)] %>% # reorder
+#   merge(., snp, by.x = "SNP", by.y = "Marker", all = T) %>% # merge with SNP info
+#   arrange(., Mark.Position.Mb)
+# 
+# # calculate negative logp for graphpad
+# congenic.fat.results$neg.logp <- (-log10(congenic.fat.results$p.value))
+# 
+# # write out for graphpad
+# # write.table(aov.out2, file="F2_second_association.csv", sep=",", row.names=F)
 
 
 ## S1 Figure ggplot2 for correlation within each population ####
