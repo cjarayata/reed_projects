@@ -1,4 +1,4 @@
-# Burly1 R script - 2017-1-29 #
+# Burly1 R script - 2018-02-05 #
 
 # Developed by Charles J Arayata, Danielle R Reed and Cailu Lin
 # Monell Chemical Senses Center
@@ -8,12 +8,14 @@
 # Use 'pacman' package to install and load packages needed
 if (!require("pacman")) install.packages("pacman", "CRAN")
 
-pacman::p_load(psych, lubridate, plyr, dplyr, broom, reshape, data.table, lsr, scatterplot3d, multcompView, lsmeans, ggplot2, cowplot, ggpubr, agricolae)
+pacman::p_load(psych, lubridate, plyr, dplyr, broom, reshape, data.table, lsr, scatterplot3d, multcompView, lsmeans, ggplot2, cowplot, ggpubr, agricolae, DescTools)
 
 # Read in data
 Data_burly1 <- read.csv("Burly1/Data/Data_burly1.csv", header=TRUE)
+Data_burly1 <- read.csv("Burly1/Data/Data_burly1.csv", header=TRUE, stringsAsFactors = F)
 
 # Read in SNP info
+# Duplicated as S2 Table: Polymorphic mChr2 markers
 snp <- read.csv("Burly1/Data/snp.csv", header=TRUE)
 snp$Marker <- trimws(tolower(snp$Marker))
 
@@ -22,6 +24,8 @@ sem <- function(x){
   sd(x)/sqrt(length(x))
 }
 
+# Negate "not in" function
+"%not%" <- Negate("%in%")
 
 ## Prep END ##
 
@@ -42,16 +46,26 @@ table.1 <- ddply(Data_burly1, ~Table1_Mapping_population, summarise,
                  end = max(birthdate.fix))
                  # end = max(endpoint.fix)) # is endpoint correct?
 
-# write.table(table.1, file="Table1.csv", sep=",", row.names=F)
+write.table(table.1, file="Burly1/Results/Table1.csv", sep=",", row.names=F)
 ## Table 1 END ##
 
 
 ## Table 2: Characteristics of N=1,293 congenic mice by N=22 strains ####
 
-## manuscript does not match but THIS table output is correct!
+## Exclude mice
+# n=1 mouse from substrain 2, endpoint = 100
+# n=2 mice from 2.2, endpoint 120
+bad.ids <-
+  c(as.character(Data_burly1$Mouse.ID[which(Data_burly1$Table_2_Substrains == "2" &
+                                              Data_burly1$Age == "100")]),
+    as.character(Data_burly1$Mouse.ID[which(Data_burly1$Table_2_Substrains == "2.2" &
+                                              Data_burly1$Age == "120")]))
+
+# Subset data, NOT bad.ids = good IDs
+table2.data <- Data_burly1[which(Data_burly1$Mouse.ID %not% bad.ids), ]
 
 # Create table
-table.2 <- ddply(Data_burly1, ~Table_2_Substrains, summarise,
+table.2 <- ddply(table2.data, ~Table_2_Substrains, summarise,
                  n = length(Mouse.ID),
                  min.age = min(Age),
                  max.age = max(Age),
@@ -59,7 +73,7 @@ table.2 <- ddply(Data_burly1, ~Table_2_Substrains, summarise,
                  sd.DEXA = round(sd(Age), digits = 0))
 
 
-# write.table(table.2, file="Table2.csv", sep=",", row.names=F)
+write.table(table.2, file="Burly1/Results/Table2.csv", sep=",", row.names=F)
 ## Table 2 END ##
 
 ## Figure 2: 3D scatter plot of body weight and lean body mass ####
@@ -70,15 +84,13 @@ scatterplot3d(data.3D, xlim=c(15,45), ylim=c(15,45), zlim=c(15,45), xlab="Lean b
 # savePlot(filename ="Figure_2_3d.tif",type ="tiff", device = dev.cur())
 ## Figure 2 END ##
 
-#### Figure 3: The genomic location of mouse QTL Burly1 identified in multiple mapping populations ####
-# load in data
+## Figure 3: The genomic location of mouse QTL Burly1 identified in multiple mapping populations ####
+# Copy data
 figure3.dat <- Data_burly1[,c(1:142)] # cut the birth and endpoint dates
 colnames(figure3.dat) <- tolower(names(figure3.dat))
 names(figure3.dat)
 
-## F2 ####
-# bodyweight plus age covariate
-
+## F2: Bodyweight plus Age covariate ####
 ## Part 1: -logp values across Chromosome 2
 
 aov.out <-
@@ -104,7 +116,7 @@ for(i in 24:length(names(figure3.dat))) {
   aov.out <- rbind(aov.out, temp.f2)
 }
 
-# only take main effect of genotype, which is listed in output as the looped term
+# Only take main effect of genotype, which is listed in output as the looped term
 f2.results <- aov.out[grep("figure3.dat", aov.out$term), ]
 
 f2.results %<>% 
@@ -112,14 +124,14 @@ f2.results %<>%
   merge(., snp, by.x = "SNP", by.y = "Marker", all = T) %>% # merge with SNP info
   arrange(., Mark.Position.Mb)
 
-# calculate negative logp
+# Calculate negative logp
 f2.results$neg.logp <- (-log10(f2.results$p.value))
 
 # WRITE OUT for part one of graphpad figure 3
 # Mark.Position and neg.logp are the relevant columns
 write.table(f2.results, file="Burly1/Results/Figure3_F2_association.csv", sep=",", row.names=F)
 
-# Part 2: bar chart
+## Part 2: Bar Chart
 # which SNP is the top hit?
 as.character(f2.results[which.max(f2.results$neg.logp), ][1]) # rs3023694
 
@@ -136,42 +148,42 @@ raw.table <-
         Bw.min = min(bodyweight))
 
 
-## least square means stuff!
-# we do this to obtain "corrected" (covariate-adjusted) means and standard deviations for our DV, so that we can make meaningful post-hoc comparisons
+## Least Square Means
+# We do this to obtain "corrected" (covariate-adjusted) means and standard deviations for our DV, so that we can make meaningful post-hoc comparisons
 
-# run manually on the top hit
+# Run manually on the top hit
 manual.fit <- aov(lm(bodyweight ~ rs3023694 + age,
                      data = figure3.dat,
                      subset = figure3.dat$table1_mapping_population == 'F2'))
 
-# obtain partial eta squared for the model
+# Partial eta squared for the model
 etaSquared(manual.fit, type=1)
 
-# run lsmeans to generate new fit object
+# Run lsmeans to generate new fit object
 leastsquare.fit <- lsmeans(manual.fit,
                         pairwise ~ rs3023694,
                         data = figure3.dat,
                         subset = figure3.dat$table1_mapping_population == 'F2')
 
-# compact letter display of pairwise comparisons
+# Compact Letter Display of pairwise comparisons
 ls.table <- cld(leastsquare.fit,
                 alpha=.05, 
                 Letters=letters)
 
-# combine with raw
+# Combine with raw
 full.table <- merge(raw.table, ls.table)
 
-# calculate least squares SD from SE
+# Calculate least squares SD from SE
 full.table$ls.sd <- full.table$SE * sqrt(full.table$n)
 
-# cut down to relevant; this is graphpad part 2
+# Cut down to relevant; This is graphpad part 2
 cohen <- full.table[, c(1, 2, 8, 14)]
 write.table(cohen, file="Burly1/Results/Figure3_F2_bar.csv", sep=",", row.names=F)
 
-# exclude genotype B (129/129 in this case)
+# Cxclude genotype B (129/129 in this case)
 cohen <- cohen[which(full.table$rs3023694 != "B"), ]
 
-# obtain effects size; this is in column D of graphpad (part 3)
+# Obtain effects size; this is in column D of graphpad (part 3)
 effectsize <- numeric(0)
 
 effectsize[1] <- 
@@ -183,10 +195,7 @@ effectsize[1] <-
 
 effectsize[1] # 0.2664629
 
-## F2_Second ####
-# a very select set of genotypes
-# lean plus total weight as covariate
-
+## F2_Second: Select set of genotypes; Lean + Total ####
 ## Part 1: -logp values across Chromosome 2
 
 aov.out <- tidy(aov(lm(lean ~ figure3.dat[,23]+total, data=figure3.dat, subset=table1_mapping_population=='F2_second')))
@@ -202,7 +211,7 @@ for (i in c(34:52, 72:81, 115:133)){
 }
 
 
-# only take main effect of genotype, which is listed in output as the looped term
+# Main Effect
 f2.hf.results <- aov.out[grep("figure3.dat", aov.out$term), ]
 
 f2.hf.results %<>% 
@@ -210,14 +219,14 @@ f2.hf.results %<>%
   merge(., snp, by.x = "SNP", by.y = "Marker", all = T) %>% # merge with SNP info
   arrange(., Mark.Position.Mb)
 
-# calculate negative logp for graphpad
+# Negative logp for graphpad
 f2.hf.results$neg.logp <- (-log10(f2.hf.results$p.value))
 
 # WRITE OUT for part one of graphpad figure 3
 # Mark.Position and neg.logp are the relevant columns
 write.table(f2.hf.results, file="Burly1/Results/Figure3_F2_second_association.csv", sep=",", row.names=F)
 
-# Part 2: bar chart
+# Part 2: Bar Chart
 # which SNP is the top hit?
 as.character(f2.hf.results[which.max(f2.hf.results$neg.logp), ][1]) # d2mit285
 
@@ -234,44 +243,42 @@ raw.table <-
         lean.min = min(lean))
 
 
-## least square means stuff!
-
+## Least Square Means
 # run manually on the top hit
 manual.fit <- aov(lm(
       lean ~ d2mit285 + total,
       data = figure3.dat,
       subset = figure3.dat$table1_mapping_population == 'F2_second'))
 
-# obtain partial eta squared for the model
+# Partial eta squared for the model
 etaSquared(manual.fit, type=1)
 
-# run lsmeans to generate new fit object
+# lsmeans to generate new fit object
 leastsquare.fit <- lsmeans(manual.fit,
                            pairwise ~ d2mit285,
                            # adjust=,
                            data = figure3.dat,
                            subset = figure3.dat$table1_mapping_population == 'F2_second')
 
-# compact letter display of pairwise comparisons
+# Pairwise comparisons
 ls.table <- cld(leastsquare.fit,
                 alpha=.05, 
                 Letters=letters)
 
-# combine with raw
+# Combine w. raw
 full.table <- merge(raw.table, ls.table)
 
-# calculate least squares SD from SE
+# Calculate least squares SD from SE
 full.table$ls.sd <- full.table$SE * sqrt(full.table$n)
 
-# cut down to relevant; this is graphpad part 2
+# Graphpad part 2
 cohen <- full.table[, c(1, 2, 8, 14)]
 write.table(cohen, file="Burly1/Results/Figure3_F2_second_bar.csv", sep=",", row.names=F)
 
-
-# cut down to relevant; exclude genotype B (129/129 in this case)
+# Exclude genotype B (129/129 in this case)
 cohen <- cohen[which(full.table$d2mit285 != "B"), ]
 
-# obtain effects size; this is in column D of graphpad (part 3)
+# Obtain effects size; this is in column D of graphpad (part 3)
 effectsize[2] <- 
   ((cohen$lsmean[1] - cohen$lsmean[2])
    /sqrt(
@@ -282,9 +289,7 @@ effectsize[2] <-
 effectsize[2] # 0.5176211
 
 
-## Backcross_129 ####
-# lean with total covariate
-
+## Backcross_129: Lean w. Total covariate ####
 ## Part 1: -logp values across Chromosome 2
 
 aov.out <- tidy(aov(lm(lean ~ figure3.dat[,22]+total, data=figure3.dat, subset=table1_mapping_population2=='Backcross_129')))
@@ -298,7 +303,7 @@ for (i in 23:(length(names(figure3.dat)))-1){
   aov.out <- rbind(aov.out, temp.Backcross_129)
 }
 
-# only take main effect of genotype, which is listed in output as the looped term
+# Main effect of genotype
 backcross.129.results <- aov.out[grep("figure3.dat", aov.out$term), ]
 
 backcross.129.results %<>% 
@@ -306,14 +311,14 @@ backcross.129.results %<>%
   merge(., snp, by.x = "SNP", by.y = "Marker", all = T) %>% # merge with SNP info
   arrange(., Mark.Position.Mb)
 
-# calculate negative logp
+# Negative logp
 backcross.129.results$neg.logp <- (-log10(backcross.129.results$p.value))
 
 # WRITE OUT for part one of graphpad figure 3
 # Mark.Position and neg.logp are the relevant columns
 write.table(backcross.129.results, file="Burly1/Results/Figure3_Backcross_129_association.csv", sep=",", row.names=F)
 
-# Part 2: bar chart
+# Part 2: Bar Chart
 # which SNP is the top hit?
 as.character(backcross.129.results[which.max(backcross.129.results$neg.logp), ][1]) # rs3687512
 
@@ -330,39 +335,37 @@ raw.table <-
         Bw.min = min(lean))
 
 
-## least square means stuff!
-# we do this to obtain "corrected" (covariate-adjusted) means and standard deviations for our DV, so that we can make meaningful post-hoc comparisons
-
+## LS Means
 # run manually on the top hit
 manual.fit <- aov(lm(lean ~ rs3687512 + total,
                      data = figure3.dat,
                      subset = figure3.dat$table1_mapping_population2 == 'Backcross_129'))
 
-# obtain partial eta squared for the model
+# Partial eta squared for the model
 etaSquared(manual.fit, type=1)
 
-# run lsmeans to generate new fit object
+# lsmeans to generate new fit object
 leastsquare.fit <- lsmeans(manual.fit,
                            pairwise ~ rs3687512,
                            data = figure3.dat,
                            subset = figure3.dat$table1_mapping_population == 'Backcross_129')
 
-# compact letter display of pairwise comparisons
+# Pairwise comparisons
 ls.table <- cld(leastsquare.fit,
                 alpha=.05, 
                 Letters=letters)
 
-# combine with raw
+# Combine with raw
 full.table <- merge(raw.table, ls.table)
 
-# calculate least squares SD from SE
+# Calculate least squares SD from SE
 full.table$ls.sd <- full.table$SE * sqrt(full.table$n)
 
-# cut down to relevant; this is graphpad part 2
+# Graphpad part 2
 cohen <- full.table[, c(1, 2, 8, 14)]
 write.table(cohen, file="Burly1/Results/Figure3_Backcross_129_bar.csv", sep=",", row.names=F)
 
-# obtain effects size; this is in column D of graphpad (part 3)
+# Obtain effects size; this is in column D of graphpad (part 3)
 
 effectsize[3] <- 
   ((cohen$lsmean[1] - cohen$lsmean[2])
@@ -374,9 +377,7 @@ effectsize[3] <-
 effectsize[3] # -0.3202797
 
 
-## Backcross_B6 ####
-# lean with total covariate
-
+## Backcross_B6: Lean w. Total ####
 ## Part 1: -logp values across Chromosome 2
 
 aov.out <- tidy(aov(lm(lean ~ figure3.dat[,22]+total, data=figure3.dat, subset=table1_mapping_population2=='Backcross_B6')))
@@ -390,7 +391,7 @@ for (i in 23:(length(names(figure3.dat)))-1){
   aov.out <- rbind(aov.out, temp.Backcross_B6)
 }
 
-# only take main effect of genotype, which is listed in output as the looped term
+# Main effect of genotype
 backcross.b6.results <- aov.out[grep("figure3.dat", aov.out$term), ]
 
 backcross.b6.results %<>% 
@@ -398,14 +399,14 @@ backcross.b6.results %<>%
   merge(., snp, by.x = "SNP", by.y = "Marker", all = T) %>% # merge with SNP info
   arrange(., Mark.Position.Mb)
 
-# calculate negative logp
+# Negative logp
 backcross.b6.results$neg.logp <- (-log10(backcross.b6.results$p.value))
 
 # WRITE OUT for part one of graphpad figure 3
 # Mark.Position and neg.logp are the relevant columns
 write.table(backcross.b6.results, file="Burly1/Results/Figure3_Backcross_B6_association.csv", sep=",", row.names=F)
 
-# Part 2: bar chart
+# Part 2: Bar Chart
 # which SNP is the top hit?
 as.character(backcross.b6.results[which.max(backcross.b6.results$neg.logp), ][1]) # rs27350529, but several are same
 
@@ -422,39 +423,38 @@ raw.table <-
         Bw.min = min(lean))
 
 
-## least square means stuff!
-# we do this to obtain "corrected" (covariate-adjusted) means and standard deviations for our DV, so that we can make meaningful post-hoc comparisons
+## LS Means
 
 # run manually on the top hit
 manual.fit <- aov(lm(lean ~ rs27350529 + total,
                      data = figure3.dat,
                      subset = figure3.dat$table1_mapping_population2 == 'Backcross_B6'))
 
-# obtain partial eta squared for the model
+# Partial eta squared for the model
 etaSquared(manual.fit, type=1)
 
-# run lsmeans to generate new fit object
+# lsmeans to generate new fit object
 leastsquare.fit <- lsmeans(manual.fit,
                            pairwise ~ rs27350529,
                            data = figure3.dat,
                            subset = figure3.dat$table1_mapping_population2 == 'Backcross_B6')
 
-# compact letter display of pairwise comparisons
+# Pairwise comparisons
 ls.table <- cld(leastsquare.fit,
                 alpha=.05, 
                 Letters=letters)
 
-# combine with raw
+# combine
 full.table <- merge(raw.table, ls.table)
 
-# calculate least squares SD from SE
+# Calculate least squares SD from SE
 full.table$ls.sd <- full.table$SE * sqrt(full.table$n)
 
-# cut down to relevant; this is graphpad part 2
+# Graphpad part 2
 cohen <- full.table[, c(1, 2, 8, 14)]
 write.table(cohen, file="Burly1/Results/Figure3_Backcross_B6_bar.csv", sep=",", row.names=F)
 
-# obtain effects size; this is in column D of graphpad (part 3)
+# Obtain effects size; this is in column D of graphpad (part 3)
 
 effectsize[4] <- 
   ((cohen$lsmean[1] - cohen$lsmean[2])
@@ -465,9 +465,7 @@ effectsize[4] <-
 
 effectsize[4] # -0.3202797
 
-## Congenics WORKS ####
-# log transformed, total covariate, subset of SNPs
-
+## Congenics: Log transformed Lean + Total, subset SNPs ####
 ## Part 1: -logp values across Chromosome 2
 aov.out <- tidy(aov(lm(log(lean) ~ figure3.dat[,60]+total, data=figure3.dat, subset=table1_mapping_population2=='Congenic')))
 aov.out["SNP"] <- colnames(figure3.dat)[60]
@@ -480,7 +478,7 @@ for (i in 61:length(names(figure3.dat))){
   aov.out <- rbind(aov.out, temp.Congenic)
 }
 
-# only take main effect of genotype, which is listed in output as the looped term
+# Main effect of genotype
 congenic.results <- aov.out[grep("figure3.dat", aov.out$term), ]
 
 congenic.results %<>% 
@@ -488,14 +486,14 @@ congenic.results %<>%
   merge(., snp, by.x = "SNP", by.y = "Marker", all = T) %>% # merge with SNP info
   arrange(., Mark.Position.Mb)
 
-# calculate negative logp
+# Negative logp
 congenic.results$neg.logp <- (-log10(congenic.results$p.value))
 
 # WRITE OUT for part one of graphpad figure 3
 # Mark.Position and neg.logp are the relevant columns
 write.table(congenic.results, file="Burly1/Results/Figure3_Congenic_association.csv", sep=",", row.names=F)
 
-# Part 2: bar chart
+# Part 2: Bar Chart
 # which SNP is the top hit?
 as.character(congenic.results[which.max(congenic.results$neg.logp), ][1]) # rs27346400, but several are same
 
@@ -511,34 +509,33 @@ raw.table <-
         Bw.max = max(lean),
         Bw.min = min(lean))
 
-## least square means stuff!
-
+## LS Means
 # run manually on the top hit
 manual.fit <- aov(lm(lean ~ rs27346400 + total,
                      data = figure3.dat,
                      subset = figure3.dat$table1_mapping_population2 == 'Congenic'))
 
-# obtain partial eta squared for the model
+# Partial eta squared for the model
 etaSquared(manual.fit, type=1)
 
-# run lsmeans to generate new fit object
+# lsmeans to generate new fit object
 leastsquare.fit <- lsmeans(manual.fit,
                            pairwise ~ rs27346400,
                            data = figure3.dat,
                            subset = figure3.dat$table1_mapping_population2 == 'Congenic')
 
-# compact letter display of pairwise comparisons
+# Pairwise comparisons
 ls.table <- cld(leastsquare.fit,
                 alpha=.05, 
                 Letters=letters)
 
-# combine with raw
+# Combine
 full.table <- merge(raw.table, ls.table)
 
-# calculate least squares SD from SE
+# Calculate least squares SD from SE
 full.table$ls.sd <- full.table$SE * sqrt(full.table$n)
 
-# cut down to relevant; this is graphpad part 2
+# Graphpad part 2
 cohen <- full.table[, c(1, 2, 8, 14)]
 write.table(cohen, file="Burly1/Results/Figure3_Congenic_bar.csv", sep=",", row.names=F)
 
@@ -553,39 +550,46 @@ effectsize[5] <-
 
 effectsize[5] # 0.6855266
 
-# save the effect sizes
+## Part 3: Save effect sizes of all analyses
 strains <- c("F2_First", "F2_Second", "Backcross_129", "Backcross_B6", "Congenic")
 effect.sizes <- data.frame("Strains" = strains,
                            "Effect Size " = effectsize)
 
 write.table(effect.sizes, file="Burly1/Results/Figure3_Effect_Sizes.csv", sep=",", row.names=F)
 
-## Figure 4 ####
+## Figure 3 END ##
 
-#CJA method
-#note use of 'aov' - default is Type I (Sequential) Sums of Squares
-b6_chr9 <- Data_near_final[which(Data_near_final$Groups=='B6.129-Chr2' | Data_near_final$Groups=='C57BL/6ByJ'), ]
-cj.model1 <- aov(lean ~ Groups + BW, data=b6_chr2)
-summary(cj.model1)
-
-
-
-
-##For 129.B6_chr2
-aov.out2 <- tidy(aov(lm(lean ~ cj.figure2[,21]+sex+total, data=cj.figure2, subset=table1_mapping_population=='129.B6-Chr2')))
-aov.out2["SNP"] <- colnames(cj.figure2)[21]
-aov.out2["Strain"] <- "129.B6_Chr2"
+## Figure 4: Reciprocal Consomics ####
+## Part 1: -logp for 129.B6_chr2 across Chr2
+aov.out <- tidy(aov(lm(lean ~ figure3.dat[,22]+sex+total, data=figure3.dat, subset=table1_mapping_population=='129.B6-Chr2')))
+aov.out["SNP"] <- colnames(figure3.dat)[22]
+aov.out["Strain"] <- "129.B6_Chr2"
   
-for (i in 22:length(names(cj.figure2))){ 
-  temp.129.B6_Chr2<-tidy(aov(lm(lean~cj.figure2[,i]+sex+total, data=cj.figure2, subset=table1_mapping_population=='129.B6-Chr2')))
-  temp.129.B6_Chr2["SNP"] <- colnames(cj.figure2)[i]
+for (i in 23:length(names(figure3.dat))){ 
+  temp.129.B6_Chr2<-tidy(aov(lm(lean~figure3.dat[,i]+sex+total, data=figure3.dat, subset=table1_mapping_population=='129.B6-Chr2')))
+  temp.129.B6_Chr2["SNP"] <- colnames(figure3.dat)[i]
   temp.129.B6_Chr2["Strain"] <- "129.B6-Chr2"
-  aov.out2 <- rbind(aov.out2, temp.129.B6_Chr2)
+  aov.out <- rbind(aov.out, temp.129.B6_Chr2)
 }
-write.table(aov.out2, file="129.B6-Chr2_association1.csv", sep=",", row.names=F) 
 
-## what about the inverse for B6.129-Chr2?
+# Main Effect
+results.129.B6_Chr2 <- aov.out[grep("figure3.dat", aov.out$term), ]
 
+results.129.B6_Chr2 %<>% 
+  .[, c(8, 7, 2:6)] %>% # reorder
+  merge(., snp, by.x = "SNP", by.y = "Marker", all = T) %>% # merge with SNP info
+  arrange(., Mark.Position.Mb)
+
+# Negative logp for graphpad
+results.129.B6_Chr2$neg.logp <- (-log10(results.129.B6_Chr2$p.value))
+
+# WRITE OUT for Graphpad figure 4
+write.table(results.129.B6_Chr2, file="Burly1/Results/Figure4_129.B6-Chr2_association.csv", sep=",", row.names=F)
+
+# For Bar Charts: Which SNP is the top hit?
+as.character(results.129.B6_Chr2[which.max(results.129.B6_Chr2$neg.logp), ][1]) # "rs3681694"
+
+## Figure 4 END##
 
 ## Figure 5 & Figure S3: Lean ####
 ## Part 1: -logp values across Chromosome 2
@@ -613,6 +617,7 @@ congenic.lean.results$neg.logp <- (-log10(congenic.lean.results$p.value))
 
 write.table(congenic.lean.results, file="Burly1/Results/Figure5_Congenic_lean_association.csv", sep=",", row.names=F)
 
+## Figure 5/S3 END ##
 
 ## Figure S1: Correlations among three measures (BW/Lean by DEXA and MR) ####
 Large <- read.csv("Burly1/Data/corr_burly1.csv")
@@ -625,51 +630,42 @@ p2 <- ggplot(Large1, aes(Lean_body_mass,Body_weight, color=method)) + geom_point
 
 ggarrange(ggarrange(p1,  ncol = 2, labels = c(""), widths=c(1, 0.9)), p2, nrow = 2, labels = c("a","b") )
 
+## Figure S4: No effect on Fat ####
+# Part 1: -logp across Chr2
+
+aov.out <- tidy(aov(lm(fat ~ figure3.dat[,60]+total, data=figure3.dat, subset=table1_mapping_population2=='Congenic')))
+aov.out["SNP"] <- colnames(figure3.dat)[60]
+aov.out["Strain"] <- "Congenic"
+
+for (i in 61:length(names(figure3.dat))){
+  temp.Congenic<-tidy(aov(lm(fat~figure3.dat[,i] + total, data=figure3.dat, subset=table1_mapping_population2=='Congenic')))
+  temp.Congenic["SNP"] <- colnames(figure3.dat)[i]
+  temp.Congenic["Strain"] <- "Congenic"
+  aov.out <- rbind(aov.out, temp.Congenic)
+}
+
+congenic.fat.results <- aov.out[grep("figure3.dat", aov.out$term), ]
+
+congenic.fat.results %<>%
+  .[, c(8, 7, 2:6)] %>% # reorder
+  merge(., snp, by.x = "SNP", by.y = "Marker", all = T) %>% # merge with SNP info
+  arrange(., Mark.Position.Mb)
+
+# Negative logp for graphpad
+congenic.fat.results$neg.logp <- (-log10(congenic.fat.results$p.value))
+
+write.table(congenic.fat.results, file="Burly1/Results/FigureS4_Congenic_fat_association.csv", sep=",", row.names=F)
 
 
 
 
-## S4 Figure for Fat ####
-# load in data
-cj.figure2 <- Data_burly1
-colnames(cj.figure2) <- tolower(names(cj.figure2))
-names(cj.figure2)
+## S4 Table correlation within each mapping population (CJ not checked yet) ####
 
-
-# ###Congenics
-# aov.out2 <- tidy(aov(lm(fat ~ cj.figure2[,60]+total, data=cj.figure2, subset=table1_mapping_population2=='Congenic')))
-# aov.out2["SNP"] <- colnames(cj.figure2)[60]
-# aov.out2["Strain"] <- "Congenic"
-# 
-# for (i in 61:length(names(cj.figure2))){ 
-#   temp.Congenic<-tidy(aov(lm(fat~cj.figure2[,i] + total, data=cj.figure2, subset=table1_mapping_population2=='Congenic')))
-#   temp.Congenic["SNP"] <- colnames(cj.figure2)[i]
-#   temp.Congenic["Strain"] <- "Congenic"
-#   aov.out2 <- rbind(aov.out2, temp.Congenic)
-# }
-# # write.table(aov.out2, file="Congenic_fat_association1.csv", sep=",", row.names=F)
-# 
-# congenic.fat.results <- aov.out2[grep("cj.figure2", aov.out2$term), ]
-# 
-# congenic.fat.results %<>% 
-#   .[, c(8, 7, 2:6)] %>% # reorder
-#   merge(., snp, by.x = "SNP", by.y = "Marker", all = T) %>% # merge with SNP info
-#   arrange(., Mark.Position.Mb)
-# 
-# # calculate negative logp for graphpad
-# congenic.fat.results$neg.logp <- (-log10(congenic.fat.results$p.value))
-# 
-# # write out for graphpad
-# # write.table(aov.out2, file="F2_second_association.csv", sep=",", row.names=F)
-
-
-
-
-## S4 Table correlation within each mapping population ####
 DEXA=subset(Large, method=="DEXA")
+# DEXA <- Large
 a=subset(DEXA, Strain=="129.B6-Chr2")
 cor.test(a$Lean_body_mass,a$Body_weight, method="pearson" )
-
+# cor.test(a$Lean_by_DEXA,a$Body.weight..g, method="pearson" )
 
 b=subset(DEXA, Strain=="B6.129-Burly1")
 cor.test(b$Lean_body_mass,b$Body_weight, method="pearson" )
@@ -696,45 +692,57 @@ cor.test(g$Lean_body_mass,g$Body_weight, method="pearson" )
 # where is this?
 
 ## Supplementary Table 6: Congenics strains included and excluded from analyses? ####
-# narrow and broad analyses, where is this?
-
-## Supplementary Table 7: Post Hoc comparision between mice w. and without donor region within congenic strains
-# first need to run an ANOVA w. different strain types
+# NEED TO MAKE SURE TO EXCLUDE ALL MICE ALREADY EXCLUDED ELSEWHERE
+# then, substitute filtered dataset into below call
 table(Data_burly1$Table_2_Substrains, Data_burly1$HasFragment)
+# table(s7.data$Table_2_Substrains, s7.data$HasFragment)
 
-substrains <- levels(Data_burly1$Table_2_Substrains)
+## Supplementary Table 7: Post Hoc comparision between mice w. and without donor region within congenic strains ####
+# Recreated to match Statistica done by Cailu
 
-exclude <- c("1.1", "1.11", "1.14", "1.6", "2.2", "1.3", "1.9")
-
-strains <- setdiff(substrains, exclude)
-
-test <- Data_burly1
-test$HasFragment <- as.factor(test$HasFragment)
-
-# cut down to the strains i want
-testt <- test[which(test$Table_2_Substrains %in% strains), ]
-
-anov.obj <- aov(testt$Lean ~ testt$Table_2_Substrains:testt$HasFragment)
-
-summary(anov.obj)
-
-pacman::p_load(DescTools)
-
-correlation.table <- PostHocTest(anov.obj, method = "lsd")
-blah <- correlation.table$`testt$Table_2_Substrains:testt$HasFragment`
-
-# this works but does not match manuscript
-# also needs some formatting work
-blah <- setDT(blah, keep.rownames = T)
-
-
+# Substrains to exclude, plus NA
+# From Statistica output:
 # Exclude condition: v3="ss.1.1" OR v3="ss.1.11" OR v3="ss.1.14" OR v3="ss1.6" OR v3="ss.2.2" OR v3="ss.1.3" OR v3="ss.1.9"
-# LSD test, variable Lean
+exclude <- c("1.1", "1.11", "1.14", "1.6", "2.2", "1.3", "1.9", NA)
+
+# Subset data
+s7.data <- 
+  Data_burly1 %>% 
+  .[which(.$Table_2_Substrains %not% exclude), ] %>% 
+  .[which(.$Table1_Mapping_population2 != "Congenic_not"), ]
+
+# Make factor for Type I ANOVA
+s7.data$HasFragment <- as.factor(s7.data$HasFragment)
+
+table(s7.data$Table_2_Substrains, s7.data$HasFragment)
+
+# ANOVA on Lean
+anov.obj <- aov(s7.data$Lean ~ s7.data$Table_2_Substrains +
+                  s7.data$HasFragment +
+                  s7.data$Table_2_Substrains:s7.data$HasFragment)
+
+summary(anov.obj) # matches Statistica
+#                                                   Df Sum Sq Mean Sq F value   Pr(>F)    
+# s7.data$Table_2_Substrains                        17    648   38.09   9.104  < 2e-16 ***
+#   s7.data$HasFragment                              1    303  302.61  72.326  < 2e-16 ***
+#   s7.data$Table_2_Substrains:s7.data$HasFragment  17    216   12.71   3.038 3.33e-05 ***
+#   Residuals                                      920   3849    4.18   
+
+## Post-Hoc Pairwise Table: LSD
+# Take ANOVA object, calculate LSD pairwise comparisons, and turn into Data Table
+posthocs <- 
+  anov.obj %>% 
+  PostHocTest(., method = "lsd") %>% 
+  .$`s7.data$Table_2_Substrains:s7.data$HasFragment` %>% 
+  data.frame(.) %>% 
+  setDT(., keep.rownames = T)
+
+## Table S7 END ##
 
 ## Labmaster: Data Processing ####
-####This script was drafted by Cailu Lin in 2016_08 for processing the labmaster data, 
+## This script was drafted by Cailu Lin in 2016_08 for processing the labmaster data 
 
-##creat statistical Table
+## create statistical table
 Table_For_analyses<-file("Burly1/Results/table_processed.csv", "w")
 cat("Animal.No.", "Average.RER", "Hr.H.2", "Hr.XT.YT.Z", "Dy.Feed", "Dy.Drink", "Hr.VO2.2", "Hr.VCO2.2", file=Table_For_analyses, "\n" ,sep=", " )
 
@@ -951,4 +959,4 @@ t.test(((table$Dy.Drink*1000)/table$lean) ~table$geno)
 
 
 
-## Burly1 script end ##
+## Burly1 script END ##
