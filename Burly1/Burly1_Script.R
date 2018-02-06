@@ -10,13 +10,16 @@ if (!require("pacman")) install.packages("pacman", "CRAN")
 
 pacman::p_load(psych, lubridate, plyr, dplyr, broom, reshape, data.table, lsr, scatterplot3d, multcompView, lsmeans, ggplot2, cowplot, ggpubr, agricolae, DescTools)
 
+# Set to your working directory
+setwd("~/GitHub/reed_projects/Burly1")
+
 # Read in data
-Data_burly1 <- read.csv("Burly1/Data/Data_burly1.csv", header=TRUE)
-Data_burly1 <- read.csv("Burly1/Data/Data_burly1.csv", header=TRUE, stringsAsFactors = F)
+Data_burly1 <- read.csv("Data/Data_burly1.csv", header=TRUE)
+# Data_burly1 <- read.csv("Data/Data_burly1.csv", header=TRUE, stringsAsFactors = F)
 
 # Read in SNP info
 # Duplicated as S2 Table: Polymorphic mChr2 markers
-snp <- read.csv("Burly1/Data/snp.csv", header=TRUE)
+snp <- read.csv("Data/snp.csv", header=TRUE)
 snp$Marker <- trimws(tolower(snp$Marker))
 
 # Standard Error function
@@ -46,7 +49,7 @@ table.1 <- ddply(Data_burly1, ~Table1_Mapping_population, summarise,
                  end = max(birthdate.fix))
                  # end = max(endpoint.fix)) # is endpoint correct?
 
-write.table(table.1, file="Burly1/Results/Table1.csv", sep=",", row.names=F)
+write.table(table.1, file="Results/Table1.csv", sep=",", row.names=F)
 ## Table 1 END ##
 
 
@@ -73,12 +76,12 @@ table.2 <- ddply(table2.data, ~Table_2_Substrains, summarise,
                  sd.DEXA = round(sd(Age), digits = 0))
 
 
-write.table(table.2, file="Burly1/Results/Table2.csv", sep=",", row.names=F)
+write.table(table.2, file="Results/Table2.csv", sep=",", row.names=F)
 ## Table 2 END ##
 
 ## Figure 2: 3D scatter plot of body weight and lean body mass ####
 
-data.3D <- read.csv("Burly1/Data/3dcorrelation.csv")
+data.3D <- read.csv("Data/3dcorrelation.csv")
 
 scatterplot3d(data.3D, xlim=c(15,45), ylim=c(15,45), zlim=c(15,45), xlab="Lean by DEXA, g", zlab="Body weight, g", ylab="Lean by MR, g", cex.lab = 2, cex.axis = 1.2)
 # savePlot(filename ="Figure_2_3d.tif",type ="tiff", device = dev.cur())
@@ -129,7 +132,7 @@ f2.results$neg.logp <- (-log10(f2.results$p.value))
 
 # WRITE OUT for part one of graphpad figure 3
 # Mark.Position and neg.logp are the relevant columns
-write.table(f2.results, file="Burly1/Results/Figure3_F2_association.csv", sep=",", row.names=F)
+write.table(f2.results, file="Results/Figure3_F2_association.csv", sep=",", row.names=F)
 
 ## Part 2: Bar Chart
 # which SNP is the top hit?
@@ -178,9 +181,9 @@ full.table$ls.sd <- full.table$SE * sqrt(full.table$n)
 
 # Cut down to relevant; This is graphpad part 2
 cohen <- full.table[, c(1, 2, 8, 14)]
-write.table(cohen, file="Burly1/Results/Figure3_F2_bar.csv", sep=",", row.names=F)
+write.table(cohen, file="Results/Figure3_F2_bar.csv", sep=",", row.names=F)
 
-# Cxclude genotype B (129/129 in this case)
+# Exclude genotype B (129/129 in this case)
 cohen <- cohen[which(full.table$rs3023694 != "B"), ]
 
 # Obtain effects size; this is in column D of graphpad (part 3)
@@ -224,7 +227,7 @@ f2.hf.results$neg.logp <- (-log10(f2.hf.results$p.value))
 
 # WRITE OUT for part one of graphpad figure 3
 # Mark.Position and neg.logp are the relevant columns
-write.table(f2.hf.results, file="Burly1/Results/Figure3_F2_second_association.csv", sep=",", row.names=F)
+write.table(f2.hf.results, file="Results/Figure3_F2_second_association.csv", sep=",", row.names=F)
 
 # Part 2: Bar Chart
 # which SNP is the top hit?
@@ -273,7 +276,7 @@ full.table$ls.sd <- full.table$SE * sqrt(full.table$n)
 
 # Graphpad part 2
 cohen <- full.table[, c(1, 2, 8, 14)]
-write.table(cohen, file="Burly1/Results/Figure3_F2_second_bar.csv", sep=",", row.names=F)
+write.table(cohen, file="Results/Figure3_F2_second_bar.csv", sep=",", row.names=F)
 
 # Exclude genotype B (129/129 in this case)
 cohen <- cohen[which(full.table$d2mit285 != "B"), ]
@@ -316,7 +319,7 @@ backcross.129.results$neg.logp <- (-log10(backcross.129.results$p.value))
 
 # WRITE OUT for part one of graphpad figure 3
 # Mark.Position and neg.logp are the relevant columns
-write.table(backcross.129.results, file="Burly1/Results/Figure3_Backcross_129_association.csv", sep=",", row.names=F)
+write.table(backcross.129.results, file="Results/Figure3_Backcross_129_association.csv", sep=",", row.names=F)
 
 # Part 2: Bar Chart
 # which SNP is the top hit?
@@ -363,7 +366,7 @@ full.table$ls.sd <- full.table$SE * sqrt(full.table$n)
 
 # Graphpad part 2
 cohen <- full.table[, c(1, 2, 8, 14)]
-write.table(cohen, file="Burly1/Results/Figure3_Backcross_129_bar.csv", sep=",", row.names=F)
+write.table(cohen, file="Results/Figure3_Backcross_129_bar.csv", sep=",", row.names=F)
 
 # Obtain effects size; this is in column D of graphpad (part 3)
 
@@ -404,7 +407,7 @@ backcross.b6.results$neg.logp <- (-log10(backcross.b6.results$p.value))
 
 # WRITE OUT for part one of graphpad figure 3
 # Mark.Position and neg.logp are the relevant columns
-write.table(backcross.b6.results, file="Burly1/Results/Figure3_Backcross_B6_association.csv", sep=",", row.names=F)
+write.table(backcross.b6.results, file="Results/Figure3_Backcross_B6_association.csv", sep=",", row.names=F)
 
 # Part 2: Bar Chart
 # which SNP is the top hit?
@@ -452,7 +455,7 @@ full.table$ls.sd <- full.table$SE * sqrt(full.table$n)
 
 # Graphpad part 2
 cohen <- full.table[, c(1, 2, 8, 14)]
-write.table(cohen, file="Burly1/Results/Figure3_Backcross_B6_bar.csv", sep=",", row.names=F)
+write.table(cohen, file="Results/Figure3_Backcross_B6_bar.csv", sep=",", row.names=F)
 
 # Obtain effects size; this is in column D of graphpad (part 3)
 
@@ -491,7 +494,7 @@ congenic.results$neg.logp <- (-log10(congenic.results$p.value))
 
 # WRITE OUT for part one of graphpad figure 3
 # Mark.Position and neg.logp are the relevant columns
-write.table(congenic.results, file="Burly1/Results/Figure3_Congenic_association.csv", sep=",", row.names=F)
+write.table(congenic.results, file="Results/Figure3_Congenic_association.csv", sep=",", row.names=F)
 
 # Part 2: Bar Chart
 # which SNP is the top hit?
@@ -537,7 +540,7 @@ full.table$ls.sd <- full.table$SE * sqrt(full.table$n)
 
 # Graphpad part 2
 cohen <- full.table[, c(1, 2, 8, 14)]
-write.table(cohen, file="Burly1/Results/Figure3_Congenic_bar.csv", sep=",", row.names=F)
+write.table(cohen, file="Results/Figure3_Congenic_bar.csv", sep=",", row.names=F)
 
 # obtain effects size; this is in column D of graphpad (part 3)
 
@@ -555,7 +558,7 @@ strains <- c("F2_First", "F2_Second", "Backcross_129", "Backcross_B6", "Congenic
 effect.sizes <- data.frame("Strains" = strains,
                            "Effect Size " = effectsize)
 
-write.table(effect.sizes, file="Burly1/Results/Figure3_Effect_Sizes.csv", sep=",", row.names=F)
+write.table(effect.sizes, file="Results/Figure3_Effect_Sizes.csv", sep=",", row.names=F)
 
 ## Figure 3 END ##
 
@@ -584,7 +587,7 @@ results.129.B6_Chr2 %<>%
 results.129.B6_Chr2$neg.logp <- (-log10(results.129.B6_Chr2$p.value))
 
 # WRITE OUT for Graphpad figure 4
-write.table(results.129.B6_Chr2, file="Burly1/Results/Figure4_129.B6-Chr2_association.csv", sep=",", row.names=F)
+write.table(results.129.B6_Chr2, file="Results/Figure4_129.B6-Chr2_association.csv", sep=",", row.names=F)
 
 # For Bar Charts: Which SNP is the top hit?
 as.character(results.129.B6_Chr2[which.max(results.129.B6_Chr2$neg.logp), ][1]) # "rs3681694"
@@ -615,16 +618,16 @@ congenic.lean.results %<>%
 # calculate negative logp for graphpad
 congenic.lean.results$neg.logp <- (-log10(congenic.lean.results$p.value))
 
-write.table(congenic.lean.results, file="Burly1/Results/Figure5_Congenic_lean_association.csv", sep=",", row.names=F)
+write.table(congenic.lean.results, file="Results/Figure5_Congenic_lean_association.csv", sep=",", row.names=F)
 
 ## Figure 5/S3 END ##
 
 ## Figure S1: Correlations among three measures (BW/Lean by DEXA and MR) ####
-Large <- read.csv("Burly1/Data/corr_burly1.csv")
+Large <- read.csv("Data/corr_burly1.csv")
 Large<- Large[-which(is.na(Large[,13])), ]
 p1 <- ggplot(Large, aes(Lean_by_DEXA,  Lean_by_MR)) + geom_point(shape=1)+ geom_smooth(method=lm) + facet_grid(. ~ Strain) + labs (x="Lean by DEXA, g", y="Lean by MR, g")
 
-Large1 <- read.csv("Burly1/Data/corr_burly1_2.csv")
+Large1 <- read.csv("Data/corr_burly1_2.csv")
 Large1<- Large1[-which(is.na(Large1[,11])), ]
 p2 <- ggplot(Large1, aes(Lean_body_mass,Body_weight, color=method)) + geom_point(shape=1)+geom_smooth(method=lm) + facet_grid(. ~ Strain) + labs(x="Lean body mass, g", y="Body weight, g")
 
@@ -654,39 +657,39 @@ congenic.fat.results %<>%
 # Negative logp for graphpad
 congenic.fat.results$neg.logp <- (-log10(congenic.fat.results$p.value))
 
-write.table(congenic.fat.results, file="Burly1/Results/FigureS4_Congenic_fat_association.csv", sep=",", row.names=F)
+write.table(congenic.fat.results, file="Results/FigureS4_Congenic_fat_association.csv", sep=",", row.names=F)
 
 
 
 
-## S4 Table correlation within each mapping population (CJ not checked yet) ####
-
-DEXA=subset(Large, method=="DEXA")
-# DEXA <- Large
-a=subset(DEXA, Strain=="129.B6-Chr2")
-cor.test(a$Lean_body_mass,a$Body_weight, method="pearson" )
-# cor.test(a$Lean_by_DEXA,a$Body.weight..g, method="pearson" )
-
-b=subset(DEXA, Strain=="B6.129-Burly1")
-cor.test(b$Lean_body_mass,b$Body_weight, method="pearson" )
-
-
-c=subset(DEXA, Strain=="B6.129-Chr2")
-cor.test(c$Lean_body_mass,c$Body_weight, method="pearson" )
-
-d=subset(DEXA, Strain=="C57BL/6ByJ")
-cor.test(d$Lean_body_mass,d$Body_weight, method="pearson" )
-
-e=subset(DEXA, Strain=="F1 x 129")
-cor.test(e$Lean_body_mass,e$Body_weight, method="pearson" )
-
-f=subset(DEXA, Strain=="F1 x B6")
-cor.test(f$Lean_body_mass,f$Body_weight, method="pearson" )
-
-g=subset(DEXA, Strain=="F2_Second")
-cor.test(g$Lean_body_mass,g$Body_weight, method="pearson" )
-
-
+## S4 Table correlation within each mapping population (CJ NOT checked yet) ####
+# 
+# DEXA=subset(Large, method=="DEXA")
+# # DEXA <- Large
+# a=subset(DEXA, Strain=="129.B6-Chr2")
+# cor.test(a$Lean_body_mass,a$Body_weight, method="pearson" )
+# # cor.test(a$Lean_by_DEXA,a$Body.weight..g, method="pearson" )
+# 
+# b=subset(DEXA, Strain=="B6.129-Burly1")
+# cor.test(b$Lean_body_mass,b$Body_weight, method="pearson" )
+# 
+# 
+# c=subset(DEXA, Strain=="B6.129-Chr2")
+# cor.test(c$Lean_body_mass,c$Body_weight, method="pearson" )
+# 
+# d=subset(DEXA, Strain=="C57BL/6ByJ")
+# cor.test(d$Lean_body_mass,d$Body_weight, method="pearson" )
+# 
+# e=subset(DEXA, Strain=="F1 x 129")
+# cor.test(e$Lean_body_mass,e$Body_weight, method="pearson" )
+# 
+# f=subset(DEXA, Strain=="F1 x B6")
+# cor.test(f$Lean_body_mass,f$Body_weight, method="pearson" )
+# 
+# g=subset(DEXA, Strain=="F2_Second")
+# cor.test(g$Lean_body_mass,g$Body_weight, method="pearson" )
+# 
+# 
 
 ## Supplementary Figure 2: Monthly lean body mass in male mice from two populations: mice with B6background (a; n=319) and mice with 129 background
 # where is this?
@@ -737,25 +740,27 @@ posthocs <-
   data.frame(.) %>% 
   setDT(., keep.rownames = T)
 
+write.table(posthocs, file="Results/TableS7_Congenic_LSD_posthoc.csv", sep=",", row.names=F)
+
 ## Table S7 END ##
 
 ## Labmaster: Data Processing ####
 ## This script was drafted by Cailu Lin in 2016_08 for processing the labmaster data 
 
 ## create statistical table
-Table_For_analyses<-file("Burly1/Results/table_processed.csv", "w")
+Table_For_analyses<-file("Results/table_processed.csv", "w")
 cat("Animal.No.", "Average.RER", "Hr.H.2", "Hr.XT.YT.Z", "Dy.Feed", "Dy.Drink", "Hr.VO2.2", "Hr.VCO2.2", file=Table_For_analyses, "\n" ,sep=", " )
 
 
-id <- as.character(read.csv(file = "Burly1/Data/labmaster.id.csv", header = TRUE)[,1])
+id <- as.character(read.csv(file = "Data/labmaster.id.csv", header = TRUE)[,1])
 
 for (i in 1:length(id))
 {
-  ####process labmaster data aninaml by animal
-  requested_animal_no <- id[i] #####type animal ID#####
+  #### process labmaster data aninaml by animal
+  requested_animal_no <- id[i] ##### type animal ID #####
   
   # Load records of animal measurements.
-  records <- read.csv(file="Burly1/Data/labmaster.records.csv", header=TRUE, sep=",", stringsAsFactors=FALSE)
+  records <- read.csv(file="Data/labmaster.records.csv", header=TRUE, sep=",", stringsAsFactors=FALSE)
   
   ##########################################################
   
@@ -829,7 +834,7 @@ for (i in 1:length(id))
   
   requested_animal_no <- id[i]
   
-  all_records <- read.csv( file="Burly1/Data/labmaster.records.csv", header=TRUE, sep=",", stringsAsFactors=FALSE )
+  all_records <- read.csv( file="Data/labmaster.records.csv", header=TRUE, sep=",", stringsAsFactors=FALSE )
   records <- all_records[ all_records$"Animal.No." == requested_animal_no, ]
   
   ##### Update rows in "records" with statistics.
@@ -929,10 +934,10 @@ for (i in 1:length(id))
 }
 
 
-## Labmaster: T-tests on processed data ####
+## Labmaster: T-tests on processed data (CJ not tweaked yet) ####
 
-geno <- read.csv("Burly1/Data/labmaster.id.csv", header = TRUE)
-metab <- read.csv ("Burly1/Results/table_processed.csv", header = TRUE)
+geno <- read.csv("Data/labmaster.id.csv", header = TRUE)
+metab <- read.csv ("Results/table_processed.csv", header = TRUE)
 table <- merge(geno, metab, by="Animal.No.")
 
 ##t.test for Average.RER
